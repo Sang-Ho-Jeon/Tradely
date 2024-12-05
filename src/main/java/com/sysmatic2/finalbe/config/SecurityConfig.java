@@ -45,7 +45,6 @@ public class SecurityConfig {
             configuration.setAllowCredentials(false); // JWT와 같은 인증 정보 포함 허용
         } else {
             configuration.addAllowedOriginPattern("https://*"); // HTTPS 출처만 허용
-            configuration.addAllowedOriginPattern("http://*"); // HTTP 출처만 허용
             configuration.setAllowCredentials(true); // JWT와 같은 인증 정보 포함 허용
         }
 

@@ -444,6 +444,7 @@ public class StrategyController {
     }
 
     //15. 전략 통계
+    //isPosted = N or isApproved = N인 경우 작성자와 관리자만 조회할 수 있다.
     /**
      * 전략 통계를 반환합니다.
      *

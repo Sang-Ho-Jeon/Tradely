@@ -426,9 +426,9 @@ public class StrategyService {
         //관리자 or 트레이더 본인
         if(isAdmin || traderId.equals(memberId)){
             //트레이더 ID로 전략 페이지 가져오기
-            traderStrategyPage = strategyRepo.findByWriterId(traderId, pageable);
+            traderStrategyPage = strategyRepo.findByWriterIdOrderByWritedAtDesc(traderId, pageable);
         } else {
-            traderStrategyPage = strategyRepo.findByWriterIdAndIsApprovedAndIsPosted(traderId, "Y", "Y", pageable);
+            traderStrategyPage = strategyRepo.findByWriterIdAndIsApprovedAndIsPostedOrderByWritedAtDesc(traderId, "Y", "Y", pageable);
         }
 
         //전략 페이지로 일간 데이터들 중 제일 최신값으로 가져오기
@@ -577,7 +577,7 @@ public class StrategyService {
      * 3-1. 전략 상세페이지 기본정보 조회 메서드
      *
      * @return StrategyResponseDto - 전략 기본정보 DTO
-     * TODO) 트레이더는 비공개한 자신의 전략상세를 볼 수 있다. 관리자는 모든 전략의 상세를 볼 수 있다. 유저는 공개만 볼 수 있다.
+     * 트레이더는 비공개한 자신의 전략상세를 볼 수 있다. 관리자는 모든 전략의 상세를 볼 수 있다. 유저는 공개만 볼 수 있다.
      *
      */
     @Transactional
@@ -742,12 +742,43 @@ public class StrategyService {
 
     }
 
+    /**
+     * 4-2. 회원 탈퇴 시 전략과 전략에 관련된 데이터 모두 삭제하는 메소드
+     * 관련 데이터 : 전략이력, 전략제안서, 실계좌인증, 전략승인요청, 관계테이블이력, 일간통계, 월간통계, 관심전략, 상담, 리뷰
+     */
+    @Transactional
+    public void deleteStrategiesByWriter(MemberEntity member) {
+        List<StrategyEntity> strategies = strategyRepo.findByWriterId(member.getMemberId());
+        for (StrategyEntity strategy : strategies) {
+            Long strategyId = strategy.getStrategyId();
+
+            strategyHistoryRepo.deleteAllByStrategyId(strategyId);  // 전략이력 삭제
+            if(strategyProposalService.getProposalByStrategyId(strategy.getStrategyId()).isPresent()){  // 전략제안서 삭제
+                strategyProposalService.deleteProposal(strategy.getStrategyId(), strategy.getWriterId());
+            }
+            if(!liveAccountDataRepository.findAllByStrategy(strategy).isEmpty()){  // 실계좌인증 삭제
+                liveAccountDataService.deleteAllLiveAccountData(strategy.getStrategyId());
+            }
+
+            strategyApprovalRequestsService.deleteStrategyApprovalRequestsByStrategy(strategy);  // 전략승인요청 삭제
+            monthlyStatisticsService.deleteMonthlyStatisticsByStrategy(strategy);  // 월간통계 삭제
+            dailyStatisticsService.deleteDailyStatisticsByStrategy(strategy);  // 일간통계 삭제
+            followingStrategyService.deleteFollowingStrategiesByStrategy(strategy);  // 관심전략 삭제
+            consultationService.deleteConsultationsByStrategy(strategy);  // 상담 삭제
+            strategyIACHistoryRepository.deleteAllByStrategyId(strategyId);  // 관계테이블이력 삭제
+            strategyIACRepository.deleteAllByStrategyEntity(strategy);  // 관계테이블 삭제
+            strategyReviewService.deleteReviewsByStrategy(strategy);  // 전략리뷰 삭제
+
+            strategyRepo.delete(strategy);  // 전략 삭제 [X]
+        }
+    }
+
+
     //5. 전략 수정
     /**
      * 5-1. 전략 기본정보 수정하는 페이지를 보여주는 메서드
      *
      * 투자주기, 매매유형, 투자자산 분류, 전략 정보 보내기
-     * TODO)운용상태 담기, 운용종료한 전략은 수정이 불가능하도록 설정
      *
      */
     @Transactional
@@ -1028,6 +1059,7 @@ public class StrategyService {
         return responseMap;
     }
 
+
     //6. 전략 종료
     /**
      * 6. 전략을 운용 종료하는 메서드
@@ -1233,36 +1265,6 @@ public class StrategyService {
         return new DailyStatisticsChartResponseDto(chartData, timestamp);
     }
 
-    /**
-     * 회원 탈퇴 시 전략과 전략에 관련된 데이터 모두 삭제하는 메소드
-     * 관련 데이터 : 전략이력, 전략제안서, 실계좌인증, 전략승인요청, 관계테이블이력, 일간통계, 월간통계, 관심전략, 상담, 리뷰
-     */
-    @Transactional
-    public void deleteStrategiesByWriter(MemberEntity member) {
-        List<StrategyEntity> strategies = strategyRepo.findByWriterId(member.getMemberId());
-        for (StrategyEntity strategy : strategies) {
-            Long strategyId = strategy.getStrategyId();
-
-            strategyHistoryRepo.deleteAllByStrategyId(strategyId);  // 전략이력 삭제
-            if(strategyProposalService.getProposalByStrategyId(strategy.getStrategyId()).isPresent()){  // 전략제안서 삭제
-                strategyProposalService.deleteProposal(strategy.getStrategyId(), strategy.getWriterId());
-            }
-            if(!liveAccountDataRepository.findAllByStrategy(strategy).isEmpty()){  // 실계좌인증 삭제
-                liveAccountDataService.deleteAllLiveAccountData(strategy.getStrategyId());
-            }
-
-            strategyApprovalRequestsService.deleteStrategyApprovalRequestsByStrategy(strategy);  // 전략승인요청 삭제
-            monthlyStatisticsService.deleteMonthlyStatisticsByStrategy(strategy);  // 월간통계 삭제
-            dailyStatisticsService.deleteDailyStatisticsByStrategy(strategy);  // 일간통계 삭제
-            followingStrategyService.deleteFollowingStrategiesByStrategy(strategy);  // 관심전략 삭제
-            consultationService.deleteConsultationsByStrategy(strategy);  // 상담 삭제
-            strategyIACHistoryRepository.deleteAllByStrategyId(strategyId);  // 관계테이블이력 삭제
-            strategyIACRepository.deleteAllByStrategyEntity(strategy);  // 관계테이블 삭제
-            strategyReviewService.deleteReviewsByStrategy(strategy);  // 전략리뷰 삭제
-
-            strategyRepo.delete(strategy);  // 전략 삭제 [X]
-        }
-    }
 
     // 10. SM SCORE 기반 상위 전략 5개 리스트
     @Transactional(readOnly = true)

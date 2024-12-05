@@ -116,17 +116,17 @@ public class LiveAccountDataService {
         StrategyEntity strategyEntity = strategyRepository.findById(strategyId)
                 .orElseThrow(() -> new StrategyNotFoundException("Strategy not found with ID: " + strategyId + "in live account data uploading."));
 
-        // 권한 판별
-        if(strategyEntity.getIsApproved().equals("N") || strategyEntity.getIsPosted().equals("N")) {
-            //비로그인
-            if (memberId == null && isTrader == false)
-                throw new AccessDeniedException("조회 권한이 없습니다.");
-
-            //트레이더인 경우 작성자인지 판별
-            if (isTrader && !strategyEntity.getWriterId().equals(memberId)) {
-                throw new AccessDeniedException("작성자와 관리자만 확인할 수 있습니다.");
-            }
-        }
+//        // 권한 판별
+//        if(strategyEntity.getIsApproved().equals("N") || strategyEntity.getIsPosted().equals("N")) {
+//            //비회원 or 일반회원
+//            if (memberId == null || isTrader == false)
+//                throw new AccessDeniedException("조회 권한이 없습니다.");
+//
+//            //트레이더인 경우 작성자인지 판별
+//            if (isTrader && !strategyEntity.getWriterId().equals(memberId)) {
+//                throw new AccessDeniedException("작성자와 관리자만 확인할 수 있습니다.");
+//            }
+//        }
 
         // 3. 전략에 등록된 실계좌 인증 리스트 조회
         Page<LiveAccountDataEntity> liveAccountDataList = liveAccountDataRepository.findAllByStrategy(strategyEntity, pageable);
