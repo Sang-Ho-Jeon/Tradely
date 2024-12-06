@@ -648,6 +648,15 @@ public class StrategyService {
         if(memberId == null || memberId.isEmpty()) responseDto.setIsFollowed(false);
         else responseDto.setIsFollowed(followingStrategyService.isFollowing(id, memberId));
 
+        //승인요청 가능 여부
+        LocalDateTime createDateTime = strategyEntity.getWritedAt();
+        LocalDate createDate = createDateTime.toLocalDate();
+        if(dailyStatisticsRepository.countByDateBetween(createDate, LocalDate.now()) >= 3){
+            responseDto.setRequestAvailable(true);
+        } else {
+            responseDto.setRequestAvailable(false);
+        }
+
         return responseDto;
     }
 
