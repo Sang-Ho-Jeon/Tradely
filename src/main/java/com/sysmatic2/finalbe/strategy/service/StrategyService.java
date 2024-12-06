@@ -733,21 +733,24 @@ public class StrategyService {
             strategyReviewService.deleteAllReviewsByStrategy(strategyEntity.getStrategyId());
         }
 
-        // 9. 전략 월간분석 데이터 삭제
+        //9. 전략 승인 요청 데이터 삭제
+        strategyApprovalRequestsRepository.deleteAllByStrategy(strategyEntity);
+
+        //10. 전략 월간분석 데이터 삭제
         // MonthlyStatisticsEntity에서 해당 전략의 데이터를 모두 삭제
         monthlyStatisticsRepository.deleteByStrategyId(strategyEntity.getStrategyId());
 
-        // 10. 전략 일간분석 데이터 삭제
+        //11. 전략 일간분석 데이터 삭제
         // DailyStatisticsEntity에서 해당 전략의 데이터를 모두 삭제
         dailyStatisticsRepository.deleteByStrategyId(strategyEntity.getStrategyId());
 
-        // 11. 관심전략 삭제
+        //12. 관심전략 삭제
         followingStrategyService.deleteFollowingStrategiesByStrategy(strategyEntity);
 
-        // 12. 해당 전략을 삭제한다. - 관계 테이블도 함께 삭제됨
+        //13. 해당 전략을 삭제한다. - 관계 테이블도 함께 삭제됨
         strategyRepo.deleteById(strategyEntity.getStrategyId());
 
-        // 13. 전략 이력엔티티의 내용을 전략 이력 테이블에 저장한다.
+        //14. 전략 이력엔티티의 내용을 전략 이력 테이블에 저장한다.
         strategyHistoryEntity.setChangeEndDate(LocalDateTime.now());
         strategyHistoryRepo.save(strategyHistoryEntity);
 
