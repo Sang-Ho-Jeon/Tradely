@@ -651,7 +651,9 @@ public class StrategyService {
         //승인요청 가능 여부
         LocalDateTime createDateTime = strategyEntity.getWritedAt();
         LocalDate createDate = createDateTime.toLocalDate();
-        if(dailyStatisticsRepository.countByDateBetween(createDate, LocalDate.now()) >= 3){
+        if(dailyStatisticsRepository.countByDateBetween(createDate, LocalDate.now()) >= 3
+                && strategyEntity.getStrategyStatusCode().equals("STRATEGY_OPERATION_UNDER_MANAGEMENT")
+                && strategyEntity.getIsApproved().equals("N")){
             responseDto.setRequestAvailable(true);
         } else {
             responseDto.setRequestAvailable(false);
@@ -1145,6 +1147,11 @@ public class StrategyService {
         LocalDate createDate = createDatetime.toLocalDate();
         if(dailyStatisticsRepository.countByDateBetween(createDate, LocalDate.now()) < 3){
             throw new DailyDataNotEnoughException("일일 거래 데이터가 3개 이상인 경우에만 승인 요청을 보낼 수 있습니다.");
+        }
+
+        //운용 종료된 전략은 승인요청을 보낼 수 없다.
+        if(strategyEntity.getStrategyStatusCode().equals("STRATEGY_OPERATION_TERMINATED")){
+            throw new StrategyTerminatedException("운용종료된 전략입니다.");
         }
 
         //이미 승인받은 전략은 승인요청을 보낼 수 없다.
