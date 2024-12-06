@@ -30,11 +30,12 @@ public class StrategyResponseDto {
     private String strategyOverview;    //전략설명
     private LocalDateTime writedAt;     //작성일시
     private String isPosted;            //공개여부
-    private String isApproved;           //승인여부
-    private Long followersCount;       //팔로워수
+    private String isApproved;          //승인여부
+    private Long followersCount;        //팔로워수
 
-    private String strategyProposalFileTitle;            // 제안서 파일명
-    private String strategyProposalLink; // 제안서 url
+    private String strategyProposalFileTitle; // 제안서 파일명
+    private String strategyProposalLink;      // 제안서 url
 
-    private Boolean isFollowed; // 팔로우했는지 여부
+    private Boolean isFollowed;       // 팔로우했는지 여부
+    private Boolean requestAvailable; //승인요청 가능 여부
 }

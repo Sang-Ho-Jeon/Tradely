@@ -110,8 +110,8 @@ public class StrategyReviewService {
         strategyRepository.findById(strategyId).orElseThrow(() -> new StrategyNotFoundException("Strategy not found with ID:" + strategyId));
 
         // 리뷰 및 수정자 확인
-        StrategyReviewEntity review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new ReviewNotFoundException("Review not found with ID: " + reviewId));
+        StrategyReviewEntity review = reviewRepository.findByIdAndStrategyId(strategyId, reviewId)
+                .orElseThrow(() -> new ReviewNotFoundException("Review not found with ID: " + reviewId + " and Strategy ID: " + strategyId));
 
         MemberEntity updater = memberRepository.findById(updaterId)
                 .orElseThrow(() -> new MemberNotFoundException("Updater not found with ID: " + updaterId));
@@ -141,31 +141,32 @@ public class StrategyReviewService {
      */
     @Transactional
     public void deleteReview(Long strategyId, Long reviewId, String memberId, Boolean isAdmin, Boolean isTrader) {
-        StrategyReviewEntity review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new ReviewNotFoundException("Review not found with ID: " + reviewId));
+        StrategyReviewEntity review = reviewRepository.findByIdAndStrategyId(strategyId, reviewId)
+                .orElseThrow(() -> new ReviewNotFoundException("Review not found with ID: " + reviewId + " and Strategy ID: " + strategyId));
 
-        //관리자인 경우
+
+        //관리자인 경우 삭제 허용
         if(isAdmin){
             reviewRepository.delete(review);
             return;
         }
 
-        //전략 정보
-        StrategyEntity strategyEntity = strategyRepository.findById(strategyId)
-                        .orElseThrow(() -> new StrategyNotFoundException("Strategy not found with ID: " + strategyId + "in review "));
+        // 리뷰의 전략 정보를 가져오기 위해 전략 엔티티 조회
+        StrategyEntity strategyEntity = review.getStrategy();
 
-        //트레이더인 경우 : 전략의 작성자
-        if(isTrader && strategyEntity.getWriterId().equals(memberId)){
+        // 트레이더인 경우: 전략 작성자인지 확인
+        if (isTrader && strategyEntity.getWriterId().equals(memberId)) {
             reviewRepository.delete(review);
             return;
         }
 
-        //일반 유저인 경우 : 리뷰의 작성자
-        if(review.getWriterId().equals(memberId)){
+        // 리뷰 작성자인 경우 삭제 허용
+        if (review.getWriterId().getMemberId().equals(memberId)) {
             reviewRepository.delete(review);
             return;
         }
 
+        // 삭제 권한이 없는 경우
         throw new AccessDeniedException("리뷰 삭제 권한이 없습니다.");
     }
 
