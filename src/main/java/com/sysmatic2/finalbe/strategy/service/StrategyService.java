@@ -747,6 +747,9 @@ public class StrategyService {
         //12. 관심전략 삭제
         followingStrategyService.deleteFollowingStrategiesByStrategy(strategyEntity);
 
+        //13. 전략 관련 상담 삭제
+        consultationService.deleteConsultationsByStrategy(strategyEntity);
+
         //13. 해당 전략을 삭제한다. - 관계 테이블도 함께 삭제됨
         strategyRepo.deleteById(strategyEntity.getStrategyId());
 
