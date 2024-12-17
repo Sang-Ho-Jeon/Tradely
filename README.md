@@ -202,3 +202,7 @@
 ## 백엔드 작성 코드수
 ![image](https://github.com/user-attachments/assets/3cff8ddd-5205-4795-b31f-639b784ba4ed)
 
+## ERD
+초안 - https://www.erdcloud.com/d/4J2HAK9HWpMdxrowz
+구현 - https://www.erdcloud.com/d/PTzfmvFm8AhCtYjP2
+
