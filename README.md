@@ -1,5 +1,3 @@
-# FinalProject_2VEN_BE
-
 # Tradely
 투자 매매 전략 공유 및 중개소셜 플랫폼 서비스
 (해외 벤치마크 사례 사이트 https://trade.collective2.com/ )  이토로(https://www.etoro.com/)와 줄루트레이더(https://www.zulutrade.com/)
