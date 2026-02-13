@@ -1,0 +1,39 @@
+name: Deploy to GCP on PR Merge
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+jobs:
+  deploy:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.GCP_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to GCP
+        run: |
+          ssh ${{ secrets.GCP_USERNAME }}@${{ secrets.GCP_HOST }} << 'EOF'
+            set -e
+
+            echo "[+] 프로젝트 디렉토리 이동..."
+            cd ~/Tradely
+
+            echo "[+] 코드 Pull..."
+            git pull origin main
+
+            echo "[+] Docker 이미지 재빌드 및 재시작..."
+            docker compose up --build -d
+
+            echo "[+] 배포 완료!"
+            docker compose ps
+          EOF

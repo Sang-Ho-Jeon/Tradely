@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.vscode
+target
+*.env
+nginx/certbot
+docker-compose*.yml
+Dockerfile
+README.md
+*.iml
+*.log
