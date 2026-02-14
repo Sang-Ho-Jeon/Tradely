@@ -45,13 +45,7 @@ docker compose up -d nginx
 sleep 3
 
 echo "[2/4] Let's Encrypt 인증서 발급 중..."
-docker compose run --rm certbot certonly \
-    --webroot \
-    -w /var/www/certbot \
-    -d "${DOMAIN}" \
-    --email "${EMAIL}" \
-    --agree-tos \
-    --no-eff-email
+docker compose run --rm --entrypoint "certbot" certbot certonly --webroot -w /var/www/certbot -d "${DOMAIN}" --email "${EMAIL}" --agree-tos --no-eff-email
 
 echo "[3/4] SSL Nginx 설정 복원..."
 # 원본 SSL 설정으로 복원
