@@ -7,18 +7,15 @@ set -e
 DOMAIN=${1:?도메인을 입력하세요 (예: api.tradely.online)}
 EMAIL=${2:?이메일을 입력하세요 (예: your-email@gmail.com)}
 
+NGINX_CONF="nginx/default.conf"
+
 echo "[1/4] SSL 없이 Nginx 시작 (HTTP only)..."
-# 임시로 로컬 설정으로 Nginx 시작
-docker compose up -d db
-echo "DB 초기화 대기 중..."
-sleep 15
 
-docker compose up -d app
-echo "앱 시작 대기 중..."
-sleep 10
+# 원본 설정 백업
+cp "${NGINX_CONF}" "${NGINX_CONF}.bak"
 
-# SSL 없는 임시 nginx 설정
-cat > /tmp/temp-nginx.conf << EOF
+# SSL 없는 임시 nginx 설정으로 교체 (호스트 파일 직접 수정 → 볼륨 마운트로 반영)
+cat > "${NGINX_CONF}" << EOF
 server {
     listen 80;
     server_name ${DOMAIN};
@@ -35,11 +32,17 @@ server {
 }
 EOF
 
+# 전체 컨테이너 시작
+docker compose up -d db
+echo "DB 초기화 대기 중..."
+sleep 15
+
+docker compose up -d app
+echo "앱 시작 대기 중..."
+sleep 10
+
 docker compose up -d nginx
-# 임시 설정 복사
-docker cp /tmp/temp-nginx.conf tradely-nginx:/etc/nginx/conf.d/default.conf
-docker exec tradely-nginx nginx -s reload
-rm /tmp/temp-nginx.conf
+sleep 3
 
 echo "[2/4] Let's Encrypt 인증서 발급 중..."
 docker compose run --rm certbot certonly \
@@ -50,9 +53,12 @@ docker compose run --rm certbot certonly \
     --agree-tos \
     --no-eff-email
 
-echo "[3/4] SSL Nginx 설정 적용..."
+echo "[3/4] SSL Nginx 설정 복원..."
 # 원본 SSL 설정으로 복원
-docker cp nginx/default.conf tradely-nginx:/etc/nginx/conf.d/default.conf
+cp "${NGINX_CONF}.bak" "${NGINX_CONF}"
+rm "${NGINX_CONF}.bak"
+
+# Nginx 설정 리로드
 docker exec tradely-nginx nginx -s reload
 
 echo "[4/4] 완료!"
