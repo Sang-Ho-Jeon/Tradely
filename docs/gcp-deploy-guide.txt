@@ -1,0 +1,373 @@
+===============================================================
+  Tradely GCP 배포 가이드 (Docker 버전)
+  도메인: tradely.online
+  레포: https://github.com/Sang-Ho-Jeon/Tradely.git
+  최종 수정: 2026-02-14
+===============================================================
+
+
+================================================================
+ 사전 준비물 체크리스트
+================================================================
+[ ] GCP 계정
+[ ] 가비아 도메인: tradely.online (구매 완료)
+[ ] GitHub 레포 접근 권한
+[ ] Gmail 앱 비밀번호 (2단계 인증 필요)
+[ ] AWS S3 버킷 + IAM 키
+
+
+================================================================
+ 1단계. GCP 인스턴스 생성
+================================================================
+
+1-1. Compute Engine > VM 인스턴스 만들기
+    - 이름: tradely-server(원하는 이름)
+    - 리전: asia-northeast3 (서울)
+    - 사양: e2-medium (2vCPU, 4GB) 또는 N2 standard (2코어 8GB)
+    - OS: Ubuntu 24.04 LTS(X86_64)
+    - 디스크: 20GB SSD 이상
+    - 방화벽: HTTP 트래픽 허용 체크, HTTPS 트래픽 허용 체크
+
+1-2. 고정 IP 설정
+    VPC 네트워크 > IP 주소 > 외부 고정 IP 주소 예약
+    → 생성한 인스턴스에 연결
+    → 이 IP를 메모해두기 (이하 [GCP_IP]라고 표기)
+
+
+================================================================
+ 2단계. 도메인 DNS 설정 (GCP Cloud DNS)
+================================================================
+
+※ 현재 가비아 네임서버가 GCP Cloud DNS로 설정되어 있음:
+  ns-cloud-a1~a4.googledomains.com
+  → DNS 레코드는 반드시 GCP Cloud DNS에서 관리해야 함 (가비아 DNS 설정은 무시됨)
+
+2-1. GCP Cloud DNS zone 확인/생성
+    GCP 콘솔 > 네트워크 서비스 > Cloud DNS
+    - 이미 tradely.online zone이 있으면 그것 사용
+    - 없으면 새로 생성:
+        - 존 이름: tradely-zone
+        - DNS 이름: tradely.online
+        - DNSSEC: 사용 안 함
+
+2-2. DNS 레코드 추가/수정
+    Cloud DNS > 해당 zone 클릭 > 레코드 세트 추가
+
+    등록할 레코드 목록:
+
+    타입     호스트              값                         TTL
+    ─────────────────────────────────────────────────────────────
+    A        api                 34.64.219.77               600
+    A        @ (루트)            75.2.60.5                  600
+    A        @ (루트)            99.83.190.102              600
+    CNAME    www                 sysmetic.netlify.app.      600
+
+    ※ 백엔드 (api.tradely.online → GCP 서버)
+      - A 레코드: api → 34.64.219.77 (GCP 고정 IP)
+
+    ※ 프론트엔드 (tradely.online → Netlify)
+      - A 레코드: @ → 75.2.60.5, 99.83.190.102 (Netlify 로드밸런서 IP 2개)
+      - CNAME: www → sysmetic.netlify.app. (끝에 점 필수)
+      - Netlify 대시보드에서도 tradely.online, www.tradely.online 커스텀 도메인 등록 필요
+
+2-3. 네임서버 확인 (가비아 측)
+    가비아 > My가비아 > 도메인 관리 > 네임서버 설정
+    아래 4개가 등록되어 있어야 함:
+    - ns-cloud-a1.googledomains.com
+    - ns-cloud-a2.googledomains.com
+    - ns-cloud-a3.googledomains.com
+    - ns-cloud-a4.googledomains.com
+    ※ 이미 설정되어 있으면 건드리지 않기
+
+2-4. DNS 전파 확인
+    nslookup api.tradely.online
+    또는
+    dig api.tradely.online
+
+    → [GCP_IP]가 나오면 성공 (보통 수 분 이내 반영)
+
+※ 주의: 인스턴스를 삭제/재생성해도 고정 IP가 동일하면 DNS 변경 불필요.
+  고정 IP가 바뀐 경우에만 Cloud DNS에서 A 레코드 값을 수정하면 됨.
+
+
+================================================================
+ 3단계. GCP 방화벽 설정
+================================================================
+
+VPC 네트워크 > 방화벽 > 방화벽 규칙 만들기
+
+필요한 포트:
+    - TCP 80   (HTTP, Nginx)        ← 인스턴스 생성 시 체크했으면 이미 열려있음
+    - TCP 443  (HTTPS, SSL)         ← 인스턴스 생성 시 체크했으면 이미 열려있음
+    - TCP 587  (Gmail SMTP 발송용)
+
+규칙 만들기 예시 (587):
+    - 이름: allow-smtp-587
+    - 방향: 수신(인그레스)
+    - 대상: 모든 인스턴스
+    - 소스 IP 범위: 0.0.0.0/0
+    - 프로토콜/포트: TCP 587
+
+※ 주의: 3306(MySQL)은 Docker 내부에서만 통신하므로 외부 개방 불필요.
+  워크벤치로 직접 접속하고 싶다면 3306도 열어야 하지만 보안상 비추천.
+
+
+================================================================
+ 4단계. 서버 초기 설정 (SSH 접속 후)
+================================================================
+
+GCP 콘솔 > VM 인스턴스 > SSH 버튼 클릭 (또는 터미널에서 gcloud compute ssh)
+
+4-1. 시스템 업데이트
+    sudo apt update && sudo apt upgrade -y
+
+4-2. Docker 설치
+    # Docker 공식 설치 스크립트
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+
+    # 현재 사용자를 docker 그룹에 추가 (sudo 없이 docker 사용 가능)
+    sudo usermod -aG docker $USER
+
+    # 적용을 위해 SSH 재접속
+    exit
+    # 다시 SSH 접속
+
+    # 설치 확인
+    docker --version
+    docker compose version
+
+4-3. Git 설치 및 프로젝트 클론
+    sudo apt install git -y
+
+    cd ~
+    git clone https://github.com/Sang-Ho-Jeon/Tradely.git
+    cd Tradely
+
+
+================================================================
+ 5단계. 환경변수 설정
+================================================================
+
+프로젝트 루트에 .env 파일 생성 (.env.example을 참고)
+
+    cd ~/Tradely
+    cp .env.example .env
+    nano .env
+
+아래 값들을 실제 값으로 수정 (.env.example 참고):
+
+    # 필수 수정 항목
+    SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/tradely_db    ← 그대로 두기 (Docker 내부 통신)
+    SPRING_DATASOURCE_USERNAME=tradely_user
+    SPRING_DATASOURCE_PASSWORD=<DB비밀번호>                   ← 원하는 비밀번호로 변경
+    SPRING_PROFILES_ACTIVE=prod                              ← prod로 설정
+    SPRING_JPA_SHOW_SQL=false                                ← 운영에서는 false
+
+    # JWT
+    SPRING_JWT_SECRET=<JWT시크릿키>
+
+    # 메일 (Gmail 앱 비밀번호)
+    SPRING_MAIL_USERNAME=<Gmail주소>
+    SPRING_MAIL_PASSWORD=<Gmail앱비밀번호>
+
+    # AWS S3
+    AWS_S3_BUCKET=<S3버킷이름>
+    AWS_REGION=ap-northeast-2
+    AWS_ACCESS_KEY=<AWS액세스키>
+    AWS_SECRET_KEY=<AWS시크릿키>
+
+※ 주의: docker-compose.yml의 db 서비스 비밀번호와 .env의 SPRING_DATASOURCE_PASSWORD가 일치해야 함.
+  docker-compose.yml에서 MYSQL_PASSWORD도 같은 값으로 맞추기:
+    nano ~/Tradely/docker-compose.yml
+    → MYSQL_PASSWORD: <DB비밀번호>  ← .env의 SPRING_DATASOURCE_PASSWORD와 동일하게
+
+
+================================================================
+ 6단계. 첫 번째 실행 (SSL 없이 테스트)
+================================================================
+
+6-1. Docker로 앱 실행
+    cd ~/Tradely
+    docker compose -f docker-compose.yml -f docker-compose.local.yml up --build -d
+
+    # 빌드에 3~5분 정도 소요 (첫 실행 시 의존성 다운로드 때문)
+
+6-2. 상태 확인
+    docker compose ps
+
+    # 3개 컨테이너 모두 Up 상태인지 확인:
+    # tradely-db     (mysql:8.4)     - Up (healthy)
+    # tradely-app    (tradely-app)   - Up
+    # tradely-nginx  (nginx:alpine)  - Up
+
+6-3. 로그 확인
+    docker logs tradely-app
+
+    # 맨 아래에 아래 메시지가 나오면 성공:
+    # Started FinalBeApplication in XX seconds
+
+6-4. 접속 테스트
+    # 서버 내부에서 테스트
+    curl http://localhost/swagger-ui/index.html
+    # 200 응답이 오면 성공
+
+    # 외부에서 브라우저로 테스트
+    http://[GCP_IP]/swagger-ui/index.html
+
+6-5. 문제가 있을 경우
+    # 앱 로그 실시간 확인
+    docker logs tradely-app -f
+
+    # DB 로그 확인
+    docker logs tradely-db
+
+    # 전체 재시작
+    docker compose -f docker-compose.yml -f docker-compose.local.yml down
+    docker compose -f docker-compose.yml -f docker-compose.local.yml up --build -d
+
+
+================================================================
+ 7단계. SSL 인증서 발급 (Let's Encrypt)
+================================================================
+
+※ 전제조건: DNS가 전파되어 api.tradely.online → [GCP_IP]로 연결되는 상태여야 함
+  확인: nslookup api.tradely.online → [GCP_IP] 가 나오는지 확인
+
+7-1. 기존 로컬 모드 중지
+    cd ~/Tradely
+    docker compose -f docker-compose.yml -f docker-compose.local.yml down
+
+7-2. HTTP 모드로 Nginx 먼저 시작
+    # init-ssl.sh 스크립트 실행
+    chmod +x init-ssl.sh
+    ./init-ssl.sh api.tradely.online 본인이메일@gmail.com
+
+    # 스크립트가 자동으로:
+    # 1) nginx 설정을 HTTP only로 임시 교체
+    # 2) DB → App → Nginx 순서로 컨테이너 시작
+    # 3) Certbot으로 인증서 발급
+    # 4) nginx 설정을 SSL 버전으로 복원
+
+    # ※ 스크립트가 중간에 멈추면 Ctrl+C 후 아래 7-3 수동 발급으로 진행
+
+7-2-1. (수동 발급) 스크립트 실패 시 직접 실행
+    # 컨테이너가 떠 있는 상태에서 실행 (docker compose ps로 확인)
+    docker compose run --rm --entrypoint "certbot" certbot certonly --webroot -w /var/www/certbot -d api.tradely.online --email 본인이메일@gmail.com --agree-tos --no-eff-email
+
+    # ※ --entrypoint "certbot" 필수 (docker-compose.yml의 entrypoint 덮어쓰기)
+    # ※ 반드시 한 줄로 실행 (줄바꿈 시 공백 들어가면 오류남)
+
+7-3. 인증서 발급 확인
+    sudo ls nginx/certbot/conf/live/api.tradely.online/
+    # fullchain.pem, privkey.pem 파일이 있으면 성공
+
+7-4. SSL Nginx 설정 적용 및 재시작
+    # init-ssl.sh가 정상 완료됐으면 이미 적용됨, 아래는 수동 발급 시에만 실행
+    cp nginx/default.conf.bak nginx/default.conf 2>/dev/null  # 백업에서 복원 (없으면 무시)
+    docker exec tradely-nginx nginx -s reload
+
+    # 또는 깔끔하게 전체 재시작
+    docker compose down
+    docker compose up -d
+
+    # certbot 컨테이너가 인증서 자동 갱신을 담당 (12시간마다 체크)
+
+7-5. HTTPS 접속 테스트
+    # 브라우저에서:
+    https://api.tradely.online/swagger-ui/index.html
+
+※ 인증서 수동 갱신이 필요한 경우:
+    docker compose run --rm --entrypoint "certbot" certbot renew
+    docker exec tradely-nginx nginx -s reload
+
+
+================================================================
+ 8단계. DB 초기 데이터 입력
+================================================================
+
+8-1. 필수 데이터 삽입
+    # SQL 스크립트가 프로젝트에 포함되어 있음 (sql/ 디렉토리)
+    # 테이블 스키마는 JPA가 자동 생성하므로 init-data.sql만 실행
+    cd ~/Tradely
+    docker exec -i tradely-db mysql -u tradely_user -p<DB비밀번호> tradely_db < sql/init-data.sql
+
+    # 전체 데이터를 복원하려면 (기존 DB를 초기화하고 다시 넣을 때):
+    docker exec -i tradely-db mysql -u tradely_user -p<DB비밀번호> -e "DROP DATABASE tradely_db; CREATE DATABASE tradely_db;"
+    docker exec -i tradely-db mysql -u tradely_user -p<DB비밀번호> tradely_db < sql/schema-dump.sql
+    # ※ schema-dump.sql은 스키마 + 데이터 전체 덤프이므로 init-data.sql 실행 불필요
+
+8-2. DB 접속 확인
+    docker exec -it tradely-db mysql -u tradely_user -p<DB비밀번호> tradely_db
+    # 접속 후 데이터 확인
+    SELECT * FROM investment_asset_classes;
+    SELECT * FROM trading_type;
+    exit
+
+
+================================================================
+ 자주 쓰는 명령어 모음
+================================================================
+
+# ---- 상태 확인 ----
+docker compose ps                          # 컨테이너 상태
+docker logs tradely-app -f                 # 앱 로그 실시간
+docker logs tradely-db                     # DB 로그
+docker logs tradely-nginx                  # Nginx 로그
+
+# ---- 시작/중지/재시작 ----
+docker compose up -d                       # 운영 모드 시작
+docker compose down                        # 전체 중지
+docker compose up --build -d               # 재빌드 후 시작
+docker compose restart app                 # 앱만 재시작
+
+# ---- DB 접속 ----
+docker exec -it tradely-db mysql -u tradely_user -p tradely_db
+
+# ---- 디스크/리소스 정리 ----
+docker system prune -f                     # 미사용 이미지/컨테이너 정리
+docker volume ls                           # 볼륨 확인
+
+# ---- 수동 배포 ----
+cd ~/Tradely
+git pull origin main
+docker compose up --build -d
+
+# ---- SSL 인증서 수동 갱신 ----
+docker compose run --rm --entrypoint "certbot" certbot renew
+docker compose restart nginx
+
+# ---- 서버 재부팅 후 자동 시작 설정 ----
+# Docker는 기본적으로 시스템 부팅 시 자동 시작됨
+# docker-compose.yml에 restart: always 설정되어 있으므로
+# 서버 재부팅 시 컨테이너도 자동 재시작됨
+
+
+================================================================
+ 트러블슈팅
+================================================================
+
+Q. 앱이 시작되지 않는다
+    docker logs tradely-app
+    → DB 연결 오류면: docker logs tradely-db 에서 DB 상태 확인
+    → 환경변수 오류면: .env 파일 확인
+
+Q. 502 Bad Gateway
+    → 앱이 아직 시작 중이거나 죽은 상태
+    → docker compose ps 에서 app 상태 확인
+    → docker compose restart app
+
+Q. SSL 인증서 만료
+    docker compose run --rm --entrypoint "certbot" certbot renew
+    docker compose restart nginx
+    (certbot 컨테이너가 12시간마다 자동 갱신하므로 보통 수동 불필요)
+
+Q. 디스크 부족
+    docker system prune -f              # 미사용 이미지 정리
+    docker volume prune -f              # 미사용 볼륨 정리 (주의: 데이터 볼륨 삭제될 수 있음)
+
+Q. DB 데이터 백업
+    docker exec tradely-db mysqldump -u tradely_user -p<DB비밀번호> tradely_db > backup.sql
+
+Q. DB 데이터 복원
+    docker exec -i tradely-db mysql -u tradely_user -p<DB비밀번호> tradely_db < backup.sql
