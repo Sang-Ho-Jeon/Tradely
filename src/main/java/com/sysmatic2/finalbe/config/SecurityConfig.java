@@ -127,7 +127,7 @@ public class SecurityConfig {
                         .requestMatchers("/**").permitAll()
 
                 )
-                //.requiresChannel(channel -> channel.anyRequest().requiresSecure()) // Nginx가 SSL 처리하므로 주석 처리
+//                .requiresChannel(channel -> channel.anyRequest().requiresSecure()) // HTTPS 강제
                 .formLogin(formLogin -> formLogin.disable()) // 폼 로그인 비활성화
                 .httpBasic(httpBasic -> httpBasic.disable()) // HTTP Basic 비활성화
                 .addFilterBefore(new JWTFilter(jwtUtil), LoginFilter.class)
