@@ -5,16 +5,20 @@ import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class SwaggerConfig {
 
+    @Value("${app.server-url}")
+    private String serverUrl;
+
     @Bean
     public OpenAPI customOpenAPI() {
         return new OpenAPI()
-                .addServersItem(new Server().url("https://api.2ven.shop")) // HTTPS 사용
+                .addServersItem(new Server().url(serverUrl)) // HTTPS 사용
                 .components(new Components()
                         .addSecuritySchemes("BearerAuth",
                                 new SecurityScheme()
